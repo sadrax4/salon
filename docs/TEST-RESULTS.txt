@@ -1,0 +1,148 @@
+TAP version 13
+# Subtest: money: toman/rial conversion and formatting
+ok 1 - money: toman/rial conversion and formatting
+  ---
+  duration_ms: 0.840182
+  type: 'test'
+  ...
+# Subtest: money: percent is exact and half-up, no float drift
+ok 2 - money: percent is exact and half-up, no float drift
+  ---
+  duration_ms: 0.113769
+  type: 'test'
+  ...
+# Subtest: deposit: default 30%, per-service override, fixed, not-required, cap
+ok 3 - deposit: default 30%, per-service override, fixed, not-required, cap
+  ---
+  duration_ms: 0.558521
+  type: 'test'
+  ...
+# Subtest: phone: Iranian mobile normalization
+ok 4 - phone: Iranian mobile normalization
+  ---
+  duration_ms: 0.247844
+  type: 'test'
+  ...
+# Subtest: jalali: known anchor dates
+ok 5 - jalali: known anchor dates
+  ---
+  duration_ms: 0.442942
+  type: 'test'
+  ...
+# Subtest: jalali: round trip across many days
+ok 6 - jalali: round trip across many days
+  ---
+  duration_ms: 14.993374
+  type: 'test'
+  ...
+# Subtest: tz: Tehran is fixed UTC+03:30 (no DST) and round-trips
+ok 7 - tz: Tehran is fixed UTC+03:30 (no DST) and round-trips
+  ---
+  duration_ms: 9.650211
+  type: 'test'
+  ...
+# Subtest: availability: intersection of business+staff hours, break removed, last slot fits
+ok 8 - availability: intersection of business+staff hours, break removed, last slot fits
+  ---
+  duration_ms: 1.961785
+  type: 'test'
+  ...
+# Subtest: availability: existing booking + buffer removes overlapping slots
+ok 9 - availability: existing booking + buffer removes overlapping slots
+  ---
+  duration_ms: 1.457216
+  type: 'test'
+  ...
+# Subtest: availability: a candidate whose buffer would clash with the next booking is rejected
+ok 10 - availability: a candidate whose buffer would clash with the next booking is rejected
+  ---
+  duration_ms: 2.495744
+  type: 'test'
+  ...
+# Subtest: availability: closures, minimum advance, max window, daily cap
+ok 11 - availability: closures, minimum advance, max window, daily cap
+  ---
+  duration_ms: 4.695622
+  type: 'test'
+  ...
+# Subtest: state: customer/system can NEVER confirm; declaring payment only reaches verification
+ok 12 - state: customer/system can NEVER confirm; declaring payment only reaches verification
+  ---
+  duration_ms: 0.435545
+  type: 'test'
+  ...
+# Subtest: state: confirmation needs payment.approve AND approved amount >= required
+ok 13 - state: confirmation needs payment.approve AND approved amount >= required
+  ---
+  duration_ms: 0.169589
+  type: 'test'
+  ...
+# Subtest: state: reject, expire, terminal states, staff limits
+ok 14 - state: reject, expire, terminal states, staff limits
+  ---
+  duration_ms: 0.161804
+  type: 'test'
+  ...
+# Subtest: payment status & balance
+ok 15 - payment status & balance
+  ---
+  duration_ms: 0.304645
+  type: 'test'
+  ...
+# Subtest: permissions: staff restricted; owner-only can't be granted to others
+ok 16 - permissions: staff restricted; owner-only can't be granted to others
+  ---
+  duration_ms: 0.331296
+  type: 'test'
+  ...
+# Subtest: cancellation: free window, non-refundable after, configurable
+ok 17 - cancellation: free window, non-refundable after, configurable
+  ---
+  duration_ms: 0.202744
+  type: 'test'
+  ...
+# Subtest: password: hash/verify, wrong password, unique salts, policy
+ok 18 - password: hash/verify, wrong password, unique salts, policy
+  ---
+  duration_ms: 253.745757
+  type: 'test'
+  ...
+# Subtest: TOTP matches RFC 6238 vector and tolerates ±1 step only
+ok 19 - TOTP matches RFC 6238 vector and tolerates ±1 step only
+  ---
+  duration_ms: 0.818789
+  type: 'test'
+  ...
+# Subtest: booking reference format and uniqueness
+ok 20 - booking reference format and uniqueness
+  ---
+  duration_ms: 2.580244
+  type: 'test'
+  ...
+# Subtest: rate limiter blocks after max and recovers after window
+ok 21 - rate limiter blocks after max and recovers after window
+  ---
+  duration_ms: 0.169984
+  type: 'test'
+  ...
+# Subtest: receipt validation sniffs real content, rejects disguised files
+ok 22 - receipt validation sniffs real content, rejects disguised files
+  ---
+  duration_ms: 0.677629
+  type: 'test'
+  ...
+# Subtest: AES-GCM payment secret round-trip and tamper detection
+ok 23 - AES-GCM payment secret round-trip and tamper detection
+  ---
+  duration_ms: 0.818946
+  type: 'test'
+  ...
+1..23
+# tests 23
+# suites 0
+# pass 23
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 544.358457

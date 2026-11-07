@@ -1,0 +1,12 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: salon
+      POSTGRES_PASSWORD: salon_dev_password   # development only; change for any shared environment
+      POSTGRES_DB: salon
+    ports: ["5432:5432"]
+    volumes: ["salon_pg:/var/lib/postgresql/data"]
+volumes:
+  salon_pg:

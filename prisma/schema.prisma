@@ -1,0 +1,444 @@
+// UNEXECUTED: written without network/Postgres access. Run `npm run db:setup` locally to validate and migrate.
+// Money = integer RIAL. Percent = basis points. All instants = timestamptz (UTC). Salon timezone lives in Setting.
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  MANAGER
+  STAFF
+  CUSTOMER
+}
+enum BookingStatus {
+  PENDING_PAYMENT
+  VERIFICATION_PENDING
+  PAYMENT_REJECTED
+  CONFIRMED
+  COMPLETED
+  NO_SHOW
+  CANCELLED
+  EXPIRED
+}
+enum BookingSource {
+  ONLINE
+  ADMIN
+}
+enum DepositRuleType {
+  PERCENT
+  FIXED
+}
+enum DepositDecision {
+  PENDING
+  APPROVED
+  REJECTED
+}
+enum TxKind {
+  DEPOSIT
+  BALANCE
+  REFUND
+}
+enum NotifChannel {
+  SMS
+  EMAIL
+  IN_APP
+}
+enum NotifStatus {
+  QUEUED
+  SENT
+  FAILED
+  SKIPPED
+}
+model Location { // single row now; every scheduling table can gain locationId later
+  id String @id @default(cuid())
+  name String
+  address String?
+  city String @default("شاهین‌شهر")
+  province String @default("اصفهان")
+  lat Float?
+  lng Float?
+  phone String?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  staff StaffProfile[]
+  bookings Booking[]
+}
+
+model Setting { // typed key/value; e.g. salon.name, owner.displayName, booking.holdMinutes, deposit.default, cancellation.*
+  key String @id
+  value Json
+  encrypted Boolean @default(false) // payment details are AES-GCM encrypted JSON strings
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  updatedById String?
+}
+
+model User {
+  id String @id @default(cuid())
+  role Role
+  email String? @unique
+  phone String? @unique
+  fullName String
+  passwordHash String?
+  totpSecretEnc String?
+  totpEnabled Boolean @default(false)
+  permissionGrants String[] @default([])
+  permissionRevokes String[] @default([])
+  active Boolean @default(true)
+  failedLogins Int @default(0)
+  lockedUntil DateTime? @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  sessions Session[]
+  staffProfile StaffProfile?
+  customer Customer?
+}
+model Session {
+  id String @id @default(cuid())
+  tokenHash String @unique
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime @db.Timestamptz(3)
+  lastSeenAt DateTime @default(now()) @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  @@index([userId])
+}
+model OtpChallenge { // phone/email OTP for customers & password resets (hashed)
+  id String @id @default(cuid())
+  target String
+  codeHash String
+  purpose String
+  attempts Int @default(0)
+  expiresAt DateTime @db.Timestamptz(3)
+  consumedAt DateTime? @db.Timestamptz(3)
+  @@index([target, purpose])
+}
+
+model Customer {
+  id String @id @default(cuid())
+  userId String? @unique
+  user User? @relation(fields: [userId], references: [id])
+  fullName String
+  phone String @unique // canonical 09xxxxxxxxx
+  email String?
+  blocked Boolean @default(false)
+  blockedReason String?
+  internalNotes String?
+  visitCount Int @default(0)
+  lastVisitAt DateTime? @db.Timestamptz(3)
+  loyaltyPoints Int @default(0)
+  referralCode String? @unique
+  vip Boolean @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  bookings Booking[]
+  reviews Review[]
+  loyalty LoyaltyTransaction[]
+  waitlist WaitlistEntry[]
+}
+
+model StaffProfile {
+  id String @id @default(cuid())
+  userId String @unique
+  user User @relation(fields: [userId], references: [id])
+  locationId String
+  location Location @relation(fields: [locationId], references: [id])
+  displayName String
+  bio String?
+  photoUrl String?
+  active Boolean @default(true)
+  canEditOwnAvailability Boolean @default(false)
+  maxBookingsPerDay Int?
+  sortOrder Int @default(0)
+  services StaffService[]
+  schedules WorkingSchedule[]
+  breaks StaffBreak[]
+  timeOff TimeOff[]
+  bookings Booking[]
+}
+model WorkingSchedule { // weekday: 0=Saturday .. 6=Friday (Iran week); minutes since local midnight
+  id String @id @default(cuid())
+  staffId String
+  staff StaffProfile @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  weekday Int
+  startMin Int
+  endMin Int
+  @@index([staffId, weekday])
+}
+model StaffBreak {
+  id String @id @default(cuid())
+  staffId String
+  staff StaffProfile @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  weekday Int
+  startMin Int
+  endMin Int
+}
+model TimeOff { // leave/holiday for one technician
+  id String @id @default(cuid())
+  staffId String
+  staff StaffProfile @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  startsAt DateTime @db.Timestamptz(3)
+  endsAt DateTime @db.Timestamptz(3)
+  reason String?
+  @@index([staffId, startsAt])
+}
+model BusinessHours {
+  id String @id @default(cuid())
+  weekday Int
+  startMin Int
+  endMin Int
+  @@index([weekday])
+}
+model BusinessHoliday {
+  id String @id @default(cuid())
+  startsAt DateTime @db.Timestamptz(3)
+  endsAt DateTime @db.Timestamptz(3)
+  title String
+}
+
+model ServiceCategory {
+  id String @id @default(cuid())
+  name String
+  slug String @unique
+  description String?
+  imageUrl String?
+  sortOrder Int @default(0)
+  visible Boolean @default(true)
+  services Service[]
+}
+model Service {
+  id String @id @default(cuid())
+  categoryId String
+  category ServiceCategory @relation(fields: [categoryId], references: [id])
+  name String
+  slug String @unique
+  description String?
+  imageUrl String?
+  priceRial Int            // INTERNAL ONLY: never serialised to public pages
+  durationMin Int          // INTERNAL ONLY
+  depositRequired Boolean @default(true)
+  depositType DepositRuleType?    // null => use global default rule
+  depositPercentBp Int?
+  depositFixedRial Int?
+  visible Boolean @default(true)
+  archived Boolean @default(false)
+  sortOrder Int @default(0)
+  staff StaffService[]
+  lines BookingService[]
+}
+model StaffService {
+  staffId String
+  serviceId String
+  staff StaffProfile @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  @@id([staffId, serviceId])
+}
+
+model RecurringSeries {
+  id String @id @default(cuid())
+  customerId String
+  everyDays Int
+  occurrences Int
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  bookings Booking[]
+}
+
+model Booking {
+  id String @id @default(cuid())
+  reference String @unique
+  locationId String
+  location Location @relation(fields: [locationId], references: [id])
+  customerId String
+  customer Customer @relation(fields: [customerId], references: [id])
+  staffId String
+  staff StaffProfile @relation(fields: [staffId], references: [id])
+  seriesId String?
+  series RecurringSeries? @relation(fields: [seriesId], references: [id])
+  status BookingStatus @default(PENDING_PAYMENT)
+  source BookingSource @default(ONLINE)
+  startsAt DateTime @db.Timestamptz(3)
+  endsAt DateTime @db.Timestamptz(3)
+  blockedUntil DateTime @db.Timestamptz(3) // endsAt + buffer; used by the exclusion constraint
+  holdExpiresAt DateTime? @db.Timestamptz(3)
+  totalRial Int
+  discountRial Int @default(0)
+  depositRequiredRial Int
+  discountCodeId String?
+  notes String?
+  rejectionReason String?
+  cancelledAt DateTime? @db.Timestamptz(3)
+  cancelReason String?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  lines BookingService[]
+  deposits DepositRecord[]
+  transactions PaymentTransaction[]
+  refunds RefundRecord[]
+  review Review?
+  @@index([staffId, startsAt])
+  @@index([customerId])
+  @@index([status, holdExpiresAt])
+}
+model BookingService { // price/duration snapshot so later catalogue edits never rewrite history
+  id String @id @default(cuid())
+  bookingId String
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  serviceId String
+  service Service @relation(fields: [serviceId], references: [id])
+  nameSnapshot String
+  priceRial Int
+  durationMin Int
+}
+
+model DepositRecord { // one declaration by the customer + the admin's decision
+  id String @id @default(cuid())
+  bookingId String
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  declaredAmountRial Int
+  transactionRef String?
+  declaredAt DateTime @default(now()) @db.Timestamptz(3)
+  decision DepositDecision @default(PENDING)
+  approvedAmountRial Int @default(0)
+  decidedById String?
+  decidedAt DateTime? @db.Timestamptz(3)
+  decisionReason String?
+  evidence PaymentEvidence[]
+  @@index([bookingId])
+}
+model PaymentEvidence { // receipt image. Uploading it NEVER confirms anything.
+  id String @id @default(cuid())
+  depositId String
+  deposit DepositRecord @relation(fields: [depositId], references: [id], onDelete: Cascade)
+  storageKey String      // private storage; served only through permission-checked, short-lived URLs
+  mime String
+  sizeBytes Int
+  sha256 String
+  uploadedAt DateTime @default(now()) @db.Timestamptz(3)
+}
+model PaymentTransaction { // recorded money movements (deposit approvals, in-salon balance)
+  id String @id @default(cuid())
+  bookingId String
+  booking Booking @relation(fields: [bookingId], references: [id])
+  kind TxKind
+  amountRial Int
+  method String? // cash / card-machine / transfer
+  recordedById String
+  note String?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  @@index([bookingId])
+  @@index([createdAt])
+}
+model RefundRecord { // manual, admin-recorded; the system never sends money
+  id String @id @default(cuid())
+  bookingId String
+  booking Booking @relation(fields: [bookingId], references: [id])
+  amountRial Int
+  reason String
+  recordedById String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+}
+
+model Notification { // in-app admin notification centre
+  id String @id @default(cuid())
+  userId String?
+  title String
+  body String
+  link String?
+  readAt DateTime? @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  @@index([userId, readAt])
+}
+model NotificationLog { // every delivery attempt incl. failures
+  id String @id @default(cuid())
+  channel NotifChannel
+  provider String
+  toAddress String
+  template String
+  body String
+  status NotifStatus
+  error String?
+  bookingId String?
+  attemptedAt DateTime @default(now()) @db.Timestamptz(3)
+}
+model Review {
+  id String @id @default(cuid())
+  customerId String
+  customer Customer @relation(fields: [customerId], references: [id])
+  bookingId String? @unique
+  booking Booking? @relation(fields: [bookingId], references: [id])
+  rating Int
+  body String?
+  approved Boolean @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+}
+model GalleryItem {
+  id String @id @default(cuid())
+  imageUrl String
+  altText String
+  caption String?
+  isPlaceholder Boolean @default(false)
+  visible Boolean @default(true)
+  sortOrder Int @default(0)
+}
+model Promotion {
+  id String @id @default(cuid())
+  title String
+  description String?
+  imageUrl String?
+  startsAt DateTime? @db.Timestamptz(3)
+  endsAt DateTime? @db.Timestamptz(3)
+  visible Boolean @default(true)
+}
+model DiscountCode {
+  id String @id @default(cuid())
+  code String @unique
+  percentBp Int?
+  fixedRial Int?
+  maxUses Int?
+  used Int @default(0)
+  startsAt DateTime? @db.Timestamptz(3)
+  endsAt DateTime? @db.Timestamptz(3)
+  active Boolean @default(true)
+}
+model LoyaltyTransaction {
+  id String @id @default(cuid())
+  customerId String
+  customer Customer @relation(fields: [customerId], references: [id])
+  points Int
+  reason String
+  bookingId String?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+}
+model ReferralRecord {
+  id String @id @default(cuid())
+  referrerId String
+  referredId String @unique
+  rewarded Boolean @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+}
+model WaitlistEntry {
+  id String @id @default(cuid())
+  customerId String
+  customer Customer @relation(fields: [customerId], references: [id])
+  serviceIds String[]
+  staffId String?
+  desiredFrom DateTime @db.Timestamptz(3)
+  desiredTo DateTime @db.Timestamptz(3)
+  notifiedAt DateTime? @db.Timestamptz(3)
+  active Boolean @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+}
+model AuditLog {
+  id String @id @default(cuid())
+  actorId String?
+  actorRole String?
+  action String
+  entity String
+  entityId String?
+  before Json?
+  after Json?
+  ip String?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  @@index([entity, entityId])
+  @@index([createdAt])
+}

@@ -1,0 +1,22 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: salon
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: salon
+    volumes: ["salon_pg:/var/lib/postgresql/data"]
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on: [db]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://salon:${DB_PASSWORD}@db:5432/salon?schema=public
+      RECEIPT_STORAGE_DIR: /data/receipts
+    volumes: ["salon_receipts:/data/receipts"]
+    ports: ["${APP_PORT:-47563}:3000"]
+volumes:
+  salon_pg:
+  salon_receipts:
